@@ -1,0 +1,53 @@
+llm:
+  provider: "openai"
+  model: "gpt-4o-mini"
+  api_key_env: "OPENAI_API_KEY"
+
+embeddings:
+  model: "all-MiniLM-L6-v2"
+
+storage:
+  url: "sqlite+aiosqlite:///./trendx.db"
+
+run:
+  cadence: "weekly"
+  max_items_per_source: 200
+
+agentic_synthesis:
+  enabled: true
+  retrieval_enabled: true
+  max_retries: 2
+  quality_threshold: 8
+
+sources:
+  papers:
+    enabled: true
+    arxiv:
+      query: "agentic OR tool calling OR memory"
+    semantic_scholar:
+      query: "agentic ai"
+  blogs:
+    enabled: true
+    rss_feeds:
+      - "https://example.com/rss"
+  github:
+    enabled: true
+    trending: true
+    releases: true
+    starred_updates: false
+    search_query: "agentic ai"
+  social:
+    enabled: true
+    hacker_news: true
+    reddit:
+      subreddits:
+        - "MachineLearning"
+        - "LocalLLaMA"
+        - "MLOps"
+
+trust:
+  source_weights:
+    papers: 1.0
+    github: 0.8
+    blogs: 0.6
+    social: 0.4

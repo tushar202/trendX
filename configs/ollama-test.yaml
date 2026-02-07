@@ -1,0 +1,46 @@
+llm:
+  provider: "ollama"
+  model: "llama3.1"
+  base_url: "http://localhost:11434"
+  api_key_env: null
+  debug: true
+  debug_path: "reports/2026-06/ollama_debug.jsonl"
+
+embeddings:
+  model: "all-MiniLM-L6-v2"
+
+storage:
+  url: "sqlite+aiosqlite:///./trendx.db"
+
+run:
+  cadence: "weekly"
+  max_items_per_source: 3
+
+agentic_synthesis:
+  enabled: true
+  retrieval_enabled: true
+  max_retries: 2
+  quality_threshold: 8
+
+sources:
+  papers:
+    enabled: true
+    arxiv:
+      query: "agentic OR tool calling OR memory"
+  blogs:
+    enabled: false
+  github:
+    enabled: true
+    trending: true
+    releases: false
+    starred_updates: false
+    search_query: "agentic ai"
+  social:
+    enabled: false
+
+trust:
+  source_weights:
+    papers: 1.0
+    github: 0.8
+    blogs: 0.6
+    social: 0.4

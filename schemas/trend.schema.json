@@ -1,0 +1,22 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "required": ["trends"],
+  "properties": {
+    "trends": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["trend_type", "novelty_score", "confidence"],
+        "properties": {
+          "cluster_label": {"type": "string"},
+          "trend_type": {"type": "string"},
+          "novelty_score": {"type": "number", "minimum": 0, "maximum": 1},
+          "confidence": {"type": "number", "minimum": 0, "maximum": 1}
+        },
+        "additionalProperties": true
+      }
+    }
+  },
+  "additionalProperties": true
+}
