@@ -243,11 +243,16 @@ async def run_pipeline(config_path: str, week: str | None = None) -> None:
         )
 
 
-async def write_report(ctx: PipelineContext, report: Dict[str, Any]) -> tuple[Path, Path]:
-    base = Path("reports") / ctx.week
-    if (base / "brief.md").exists() or (base / "brief.json").exists():
-        run_id = datetime.utcnow().strftime("run-%Y%m%d-%H%M%S")
-        base = base / run_id
+async def write_report(
+    ctx: PipelineContext, report: Dict[str, Any], output_dir: str | Path | None = None
+) -> tuple[Path, Path]:
+    if output_dir is not None:
+        base = Path(output_dir)
+    else:
+        base = Path("reports") / ctx.week
+        if (base / "brief.md").exists() or (base / "brief.json").exists():
+            run_id = datetime.utcnow().strftime("run-%Y%m%d-%H%M%S")
+            base = base / run_id
     base.mkdir(parents=True, exist_ok=True)
 
     md_path = base / "brief.md"

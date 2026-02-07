@@ -42,3 +42,11 @@ def run(config: str = "configs/default.yaml") -> None:
 def backfill(weeks: int = 4, config: str = "configs/default.yaml") -> None:
     """Rebuild reports for the last N weeks."""
     asyncio.run(run_backfill(config, weeks))
+
+
+@app.command()
+def agent(config: str = "configs/default.yaml", week: str | None = None) -> None:
+    """(Experimental) Orchestrator-driven execution."""
+    from trendx.orchestrator import run_agent
+
+    asyncio.run(run_agent(config, week))

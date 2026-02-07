@@ -174,6 +174,7 @@ async def _refine_single_trend(
     api_key_env: Optional[str],
     base_url: Optional[str],
     embedding_model: str,
+    external_feedback: Optional[str] = None,
 ) -> Dict[str, Any]:
     current = {
         "title": trend.get("title") or trend.get("cluster_label") or "Untitled",
@@ -187,29 +188,33 @@ async def _refine_single_trend(
     evidence_blob = _format_evidence_blob(trend)
 
     for attempt in range(retries):
-        try:
-            critique_prompt = CRITIC_PROMPT.format(
-                title=current["title"],
-                summary=current["summary"],
-                so_what=current["so_what"],
-                evidence=evidence_blob,
-            )
-            critique_raw = await _call_llm(
-                stage="synthesis_critic",
-                system="Return JSON only.",
-                user=critique_prompt,
-                provider=provider,
-                model=critic_model,
-                api_key_env=api_key_env,
-                base_url=base_url,
-                temperature=0.0,
-            )
-            critique = extract_json(critique_raw) or {}
-            score = _clamp_score(critique.get("score"))
-            feedback = critique.get("feedback") or "Improve clarity and actionability."
-        except Exception as exc:
-            logger.warning("synthesis critique failed: %s", exc)
-            return current
+        if external_feedback and attempt == 0:
+            score = 0
+            feedback = f"MANAGEMENT OVERRIDE: {external_feedback}"
+        else:
+            try:
+                critique_prompt = CRITIC_PROMPT.format(
+                    title=current["title"],
+                    summary=current["summary"],
+                    so_what=current["so_what"],
+                    evidence=evidence_blob,
+                )
+                critique_raw = await _call_llm(
+                    stage="synthesis_critic",
+                    system="Return JSON only.",
+                    user=critique_prompt,
+                    provider=provider,
+                    model=critic_model,
+                    api_key_env=api_key_env,
+                    base_url=base_url,
+                    temperature=0.0,
+                )
+                critique = extract_json(critique_raw) or {}
+                score = _clamp_score(critique.get("score"))
+                feedback = critique.get("feedback") or "Improve clarity and actionability."
+            except Exception as exc:
+                logger.warning("synthesis critique failed: %s", exc)
+                return current
 
         if score >= threshold:
             return current
@@ -279,6 +284,32 @@ async def _refine_single_trend(
             logger.warning("synthesis refine failed: %s", exc)
             return current
     return current
+
+
+async def refine_single_trend(
+    trend: Dict[str, Any],
+    cluster_items: List[Dict[str, Any]],
+    agentic_cfg: AgenticSynthesisConfig,
+    provider: str,
+    model: str,
+    api_key_env: Optional[str],
+    base_url: Optional[str],
+    embedding_model: str,
+    external_feedback: Optional[str] = None,
+) -> Dict[str, Any]:
+    trend_payload = {**trend}
+    trend_payload["items"] = cluster_items
+    trend_payload["evidence"] = _evidence_from_trend({"items": cluster_items})
+    return await _refine_single_trend(
+        trend_payload,
+        agentic_cfg,
+        provider,
+        model,
+        api_key_env,
+        base_url,
+        embedding_model,
+        external_feedback=external_feedback,
+    )
 
 
 async def _request_synthesis_json(
