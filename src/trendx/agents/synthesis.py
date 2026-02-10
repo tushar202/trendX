@@ -206,6 +206,9 @@ async def _refine_single_trend(
     # Format the evidence context once
     evidence_blob = _format_evidence_blob(trend)
 
+    # Accumulate feedback across attempts so the Refiner doesn't undo previous fixes
+    feedback_history: list[str] = []
+
     for attempt in range(retries):
         # ---------------------------------------------------------------------
         # PHASE 1: CRITIQUE & SCORE
@@ -247,6 +250,10 @@ async def _refine_single_trend(
             return current
 
         logger.info("refining trend (score=%s/%s). Feedback: %s", score, threshold, feedback)
+
+        # Track feedback for memory across attempts
+        feedback_history.append(f"Attempt {attempt + 1} (score {score}): {feedback}")
+        history_text = "\n".join(feedback_history) if len(feedback_history) > 1 else "No previous attempts."
         
         # ---------------------------------------------------------------------
         # PHASE 2: REFINEMENT STRATEGY (DECISION)
@@ -258,6 +265,7 @@ async def _refine_single_trend(
                 summary=current["summary"],
                 so_what=current["so_what"],
                 feedback=feedback,
+                history=history_text,
             )
             decision_raw = await _call_llm(
                 stage="synthesis_refiner_decision",
