@@ -15,7 +15,7 @@ from trendx.config import AgenticSynthesisConfig
 from trendx.utils.logging import get_logger
 from trendx.utils.json_extract import extract_json
 from trendx.utils.llm_debug import log_llm_event
-from trendx.tools.retrieval import search_cluster_evidence
+from trendx.tools.retrieval import search_cluster_evidence, tavily_search
 
 logger = get_logger(__name__)
 
@@ -290,15 +290,25 @@ async def _refine_single_trend(
                     return current
 
                 # Perform Local Vector Search
-                evidence = search_cluster_evidence(
+                local_evidence = search_cluster_evidence(
                     trend.get("items") or [],
                     query,
                     model_name=embedding_model,
                 )
+
+                # Perform External Web Search (New!)
+                tavily_key = agentic_cfg.get("tavily_api_key") or config.llm.tavily_api_key
+                web_evidence = await tavily_search(query, api_key=tavily_key)
+
+                # Combine Evidence
+                combined_evidence = (
+                    f"LOCAL EVIDENCE (Cluster Items):\n{local_evidence}\n\n"
+                    f"EXTERNAL WEB EVIDENCE (Fresh Search):\n{web_evidence}"
+                )
                 
                 # Rewrite using new evidence
                 final_prompt = REFINER_WITH_EVIDENCE_PROMPT.format(
-                    evidence=evidence,
+                    evidence=combined_evidence,
                     feedback=feedback,
                     title=current["title"],
                 )

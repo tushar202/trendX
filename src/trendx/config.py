@@ -14,6 +14,7 @@ class LLMConfig(BaseModel):
     base_url: Optional[str] = None
     debug: bool = False
     debug_path: Optional[str] = None
+    tavily_api_key: Optional[str] = None
 
 
 class EmbeddingConfig(BaseModel):
