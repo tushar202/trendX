@@ -14,6 +14,8 @@ class TrendDraft(BaseModel):
     so_what: str
     status: Literal["draft", "rejected", "approved"] = "draft"
     feedback_history: List[str] = []
+    revision_count: int = 0
+    needs_review: bool = False  # True if auto-approved after hitting max revisions
 
 
 class ReportState(BaseModel):

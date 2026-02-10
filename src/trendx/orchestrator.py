@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import logging
 from pathlib import Path
 from typing import Any, Dict, List
 
@@ -10,6 +11,12 @@ from trendx.state import ReportState, TrendDraft
 from trendx.tools import wrappers
 from trendx.utils.paths import get_new_run_dir
 from trendx.utils.time import week_id
+
+logger = logging.getLogger(__name__)
+
+# Maximum number of revision attempts per draft before auto-approving.
+# Prevents infinite loops when the Critic threshold exceeds Refiner capability.
+MAX_REVISIONS = 3
 
 
 def _load_json(path: Path) -> List[Dict[str, Any]] | None:
@@ -123,6 +130,20 @@ async def run_agent(config_path: str, week: str | None = None) -> None:
                     target = next((d for d in state.drafts if d.id == draft_id), None)
                     if not target:
                         continue
+
+                    # --- Retry Budget Guard ---
+                    if target.revision_count >= MAX_REVISIONS:
+                        logger.warning(
+                            "Draft '%s' hit max revisions (%d). Auto-approving with review flag.",
+                            target.id, MAX_REVISIONS,
+                        )
+                        target.status = "approved"
+                        target.needs_review = True
+                        target.feedback_history.append(
+                            f"[AUTO-APPROVED] Exceeded {MAX_REVISIONS} revision attempts."
+                        )
+                        continue
+
                     cluster = next(
                         (c for c in clusters if c.get("label") == target.cluster_label), None
                     )
@@ -142,6 +163,7 @@ async def run_agent(config_path: str, week: str | None = None) -> None:
                     target.title = new_data.get("title", target.title)
                     target.summary = new_data.get("summary", target.summary)
                     target.so_what = new_data.get("so_what", target.so_what)
+                    target.revision_count += 1
                     target.status = "draft"
 
             if all(d.status == "approved" for d in state.drafts):
