@@ -4,6 +4,16 @@ from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
 
+# -----------------------------------------------------------------------------
+# Heuristic "Critic" / Scorer
+# NOTE: This module is currently a "Repo Quality Scorer" rather than a true
+# semantic critic. It calculates a 'production_score' based on GitHub metadata.
+#
+# DISTINCTION: This is distinct from the LLM-based "Critic" used inside
+# `src/trendx/agents/synthesis.py`, which evaluates the quality of the written report.
+# -----------------------------------------------------------------------------
+
+
 def _parse_dt(value: Any) -> Optional[datetime]:
     if isinstance(value, datetime):
         return value
@@ -29,6 +39,15 @@ def _repo_age_days(meta: Dict[str, Any]) -> Optional[int]:
 
 
 def _production_score(meta: Dict[str, Any]) -> int:
+    """
+    Calculate a heuristic score (0-100) for repository maturity.
+    
+    Factors:
+    +20: Docker support (Dockerfile or compose)
+    +20: Tests (has_tests flag)
+    +20: Permissive License (MIT/Apache 2.0)
+    -30: "Hype" Penalty (High stars > 1000 but very young < 30 days)
+    """
     score = 0
     if meta.get("has_dockerfile") or meta.get("has_docker_compose"):
         score += 20
@@ -46,6 +65,10 @@ def _production_score(meta: Dict[str, Any]) -> int:
 
 
 def run(trends: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """
+    Run the heuristic critic on the provided trends.
+    Computes and aggregates 'production_score' for items in each trend.
+    """
     for trend in trends:
         scores: List[int] = []
         for item in trend.get("items", []):

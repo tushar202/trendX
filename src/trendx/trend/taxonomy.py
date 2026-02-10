@@ -156,24 +156,42 @@ async def _llm_subtopics(bucket_label: str, titles: Sequence[str], cfg: Taxonomy
 async def cluster_with_taxonomy(
     week: str, items: List[Dict[str, Any]], cfg: TaxonomyConfig
 ) -> List[Dict[str, Any]]:
+    """
+    Hybrid clustering using LLM for taxonomy generation and Embeddings for item assignment.
+
+    Flow:
+    1. Sampling: Pick ~50 random items as seeds.
+    2. Stage 1 (Broad Buckets): Ask LLM to generate 6-8 buckets covering these items.
+    3. Assignment: Embed bucket labels and assign ALL items to the nearest bucket (vector similarity).
+    4. Stage 2 (Refinement): Iterate through each bucket.
+       - If size >= 10: Ask LLM for 3-5 subtopics, then re-assign items within that bucket.
+       - If size < 10: Keep as is.
+    5. Filtering: Any group with < 3 items is dissolved into 'Miscellaneous'.
+    """
     if not items:
         return []
 
+    # 1. Pre-computation: Ensure embeddings exist for all items
     items = _ensure_embeddings(items, cfg.embedding_model)
 
+    # Deterministic seeding for reproducibility based on week + item count
     seed = _seed_from_week(week, len(items))
     rng = random.Random(seed)
+    # Sample a subset to avoid context limit/cost when asking LLM for buckets
     sample_size = min(50, len(items))
     sample = rng.sample(items, sample_size)
     sample_titles = [_item_text(i) for i in sample]
 
+    # Stage 1: High-Level Bucketing via LLM
     buckets = await _llm_buckets(sample_titles, cfg)
     if not buckets:
         buckets = ["General"]
 
+    # Convert bucket labels to vectors for assignment
     model = SentenceTransformer(cfg.embedding_model)
     bucket_vecs = model.encode(buckets, normalize_embeddings=True)
 
+    # Assign every item to the semantically closest bucket (Stage 1 assignment)
     item_vecs = np.array([i["embedding"] for i in items])
     bucket_vecs = np.array(bucket_vecs)
 
@@ -187,11 +205,16 @@ async def cluster_with_taxonomy(
     clusters: List[Dict[str, Any]] = []
     misc_items: List[Dict[str, Any]] = []
 
+    # Stage 2: Refine large buckets into subtopics
     for bucket_label, bucket_items in bucket_map.items():
+        # Heuristic: Only refine if the bucket is "large enough" (>= 10 items)
         if len(bucket_items) >= 10:
             titles = [_item_text(i) for i in bucket_items]
             subtopics = await _llm_subtopics(bucket_label, titles[:50], cfg)
+            
+            # If refinement was successful and meaningful
             if subtopics and subtopics != [bucket_label]:
+                # Re-cluster within this bucket using subtopics vectors
                 sub_vecs = model.encode(subtopics, normalize_embeddings=True)
                 sub_vecs = np.array(sub_vecs)
                 bucket_item_vecs = np.array([i["embedding"] for i in bucket_items])
@@ -202,6 +225,7 @@ async def cluster_with_taxonomy(
                 for item, idx in zip(bucket_items, sub_idx):
                     sub_map[subtopics[int(idx)]].append(item)
 
+                # Filter small subtopics: anything < 3 items goes to Misc
                 for label, sub_items in sub_map.items():
                     if len(sub_items) < 3:
                         misc_items.extend(sub_items)
@@ -209,11 +233,13 @@ async def cluster_with_taxonomy(
                         clusters.append(_cluster_payload(label, sub_items))
                 continue
 
+        # Filter small main buckets: anything < 3 items goes to Misc
         if len(bucket_items) < 3:
             misc_items.extend(bucket_items)
         else:
             clusters.append(_cluster_payload(bucket_label, bucket_items))
 
+    # Aggregated "Miscellaneous" cluster for all filtered items
     if misc_items:
         clusters.append(_cluster_payload("Miscellaneous", misc_items))
 

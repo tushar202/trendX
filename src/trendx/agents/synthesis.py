@@ -27,6 +27,10 @@ def _model_name(provider: str, model: str) -> str:
 
 
 def _evidence_from_trend(trend: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Summarize evidence metrics for a trend (source counts, trust score).
+    This blob is passed to the LLM to ground the synthesis.
+    """
     counts: Dict[str, int] = {}
     trust_scores: List[float] = []
     conflicts = 0
@@ -46,6 +50,10 @@ def _evidence_from_trend(trend: Dict[str, Any]) -> Dict[str, Any]:
 
 
 def _fallback_synthesis(trends: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """
+    Generate basic placeholders if LLM synthesis fails or is disabled.
+    Useful for testing or when API limits are hit.
+    """
     out: List[Dict[str, Any]] = []
     for t in trends:
         label = t.get("cluster_label") or t.get("label") or "Untitled"
@@ -66,6 +74,10 @@ def _fallback_synthesis(trends: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
 
 
 def _extract_claim_snippets(items: Sequence[Dict[str, Any]], limit: int = 3) -> List[Dict[str, Any]]:
+    """
+    Extract concrete claim text and anchors from items to feed the LLM.
+    Limits to 'limit' items to save context window.
+    """
     snippets: List[Dict[str, Any]] = []
     for item in items:
         for claim in item.get("claims") or []:
@@ -90,6 +102,7 @@ def _extract_claim_snippets(items: Sequence[Dict[str, Any]], limit: int = 3) -> 
 
 
 def _normalize_synthesis_output(data: Any) -> List[Dict[str, Any]] | None:
+    """Ensure LLM output matches expected schema (List of dicts with title, summary, so_what)."""
     if isinstance(data, dict) and "trends" in data:
         data = data["trends"]
     if not isinstance(data, list):
@@ -123,6 +136,7 @@ async def _call_llm(
     base_url: Optional[str],
     temperature: float = 0.2,
 ) -> str:
+    """Wrapper for LLM calls with logging."""
     api_key = os.getenv(api_key_env) if api_key_env else None
     if not api_key and provider != "ollama":
         raise RuntimeError("missing API key")
@@ -176,6 +190,10 @@ async def _refine_single_trend(
     embedding_model: str,
     external_feedback: Optional[str] = None,
 ) -> Dict[str, Any]:
+    """
+    Agentic Loop: Evaluates and refines a single trend draft.
+    """
+    # Initialize current draft from input
     current = {
         "title": trend.get("title") or trend.get("cluster_label") or "Untitled",
         "summary": trend.get("summary") or "",
@@ -185,10 +203,17 @@ async def _refine_single_trend(
     threshold = _clamp_score(agentic_cfg.quality_threshold)
     critic_model = agentic_cfg.critic_model or model
 
+    # Format the evidence context once
     evidence_blob = _format_evidence_blob(trend)
 
     for attempt in range(retries):
+        # ---------------------------------------------------------------------
+        # PHASE 1: CRITIQUE & SCORE
+        # ---------------------------------------------------------------------
         if external_feedback and attempt == 0:
+            # External feedback (from Orchestrator/Manager) overrides the LLM critic for the first attempt.
+            # This ensures the agent acts on the specific instruction first, whether it's
+            # from a human override or an automated policy enforcement.
             score = 0
             feedback = f"MANAGEMENT OVERRIDE: {external_feedback}"
         else:
@@ -216,11 +241,18 @@ async def _refine_single_trend(
                 logger.warning("synthesis critique failed: %s", exc)
                 return current
 
+        # Check if quality threshold is met (Exit Condition)
         if score >= threshold:
+            logger.info("Trend met quality threshold (%s/%s). Returning.", score, threshold)
             return current
 
-        logger.info("refining trend (score=%s/%s)", score, threshold)
+        logger.info("refining trend (score=%s/%s). Feedback: %s", score, threshold, feedback)
+        
+        # ---------------------------------------------------------------------
+        # PHASE 2: REFINEMENT STRATEGY (DECISION)
+        # ---------------------------------------------------------------------
         try:
+            # Ask the Refiner: "Given this feedback, should we SEARCH or REWRITE?"
             decision_prompt = REFINER_DECISION_PROMPT.format(
                 title=current["title"],
                 summary=current["summary"],
@@ -242,19 +274,29 @@ async def _refine_single_trend(
                 return current
 
             action = decision.get("action") or "rewrite"
+            
+            # -----------------------------------------------------------------
+            # PHASE 3: EXECUTE ACTION
+            # -----------------------------------------------------------------
+            
+            # Action A: SEARCH (Local Context Only)
             if action == "search" and agentic_cfg.retrieval_enabled:
                 query = decision.get("query") or ""
                 if not query.strip():
+                    # Fallback to rewrite if query is empty
                     rewrite = decision.get("rewrite_content")
                     if isinstance(rewrite, dict):
                         current = _normalize_rewrite(rewrite, current)
                     return current
 
+                # Perform Local Vector Search
                 evidence = search_cluster_evidence(
                     trend.get("items") or [],
                     query,
                     model_name=embedding_model,
                 )
+                
+                # Rewrite using new evidence
                 final_prompt = REFINER_WITH_EVIDENCE_PROMPT.format(
                     evidence=evidence,
                     feedback=feedback,
@@ -275,11 +317,13 @@ async def _refine_single_trend(
                     current = _normalize_rewrite(final_content, current)
                 return current
 
+            # Action B: REWRITE (Direct)
             if action == "rewrite":
                 rewrite = decision.get("rewrite_content")
                 if isinstance(rewrite, dict):
                     current = _normalize_rewrite(rewrite, current)
                 return current
+                
         except Exception as exc:
             logger.warning("synthesis refine failed: %s", exc)
             return current
@@ -297,9 +341,31 @@ async def refine_single_trend(
     embedding_model: str,
     external_feedback: Optional[str] = None,
 ) -> Dict[str, Any]:
+    """
+    Public wrapper to refine a trend using its items.
+    
+    LIMITATION: The 'search' action here calls `search_cluster_evidence`, which
+    ONLY searches within the items already in the cluster. It does NOT search
+    the web or external sources.
+    IMPACT: If the cluster itself is shallow (few items, weak content), the
+    synthesis will also be shallow because the agent cannot find *new* facts.
+    
+    ROADMAP: Implement a true `Deep Synthesis Agent`:
+    1. Allow 'search' to call a web search tool (e.g., Tavily, Serper).
+    2. Implement 'Gap Analysis': Ask LLM "What is missing?" before searching.
+    3. Use 'comparative analysis' prompts to contrast items.
+    """
+    # Step 1: Clone the trend to avoid mutating the original until success
     trend_payload = {**trend}
+    
+    # Step 2: Attach the raw items (needed for 'search' actions)
     trend_payload["items"] = cluster_items
+    
+    # Step 3: Pre-calculate evidence stats (source counts, trust scores)
+    # This gives the agent a "meta-view" of the data quality.
     trend_payload["evidence"] = _evidence_from_trend({"items": cluster_items})
+    
+    # Step 4: Enter the Agentic Loop
     return await _refine_single_trend(
         trend_payload,
         agentic_cfg,
@@ -321,6 +387,7 @@ async def _request_synthesis_json(
     base_url: Optional[str],
     max_retries: int = 2,
 ) -> List[Dict[str, Any]] | None:
+    """Make the initial LLM call to generate drafts for all trends."""
     api_key = os.getenv(api_key_env) if api_key_env else None
     if not api_key and provider != "ollama":
         logger.warning("synthesis skipped: missing API key")
@@ -351,7 +418,7 @@ async def _request_synthesis_json(
         if normalized is not None:
             return normalized
 
-        # Tighten prompt for retry
+        # Tighten prompt for retry if JSON parsing failed
         system = (
             "Return ONLY valid JSON. No markdown, no code fences. "
             "Return a JSON array of objects with keys: title, summary, so_what."
@@ -368,14 +435,22 @@ async def run(
     agentic_cfg: Optional[AgenticSynthesisConfig] = None,
     embedding_model: str = "all-MiniLM-L6-v2",
 ) -> List[Dict[str, Any]]:
+    """
+    Main Synthesis Pipeline:
+    1. Pre-process trends (extract evidence, claims).
+    2. Batch LLM call to generate initial drafts.
+    3. (Optional) Agentic Refinement loop for each trend.
+    """
     if not trends:
         return trends
 
+    # Pre-calculate evidence stats
     for t in trends:
         t["evidence"] = _evidence_from_trend(t)
 
     fallback = _fallback_synthesis([t.copy() for t in trends])
 
+    # Prepare payload for Batch LLM generation
     payload = []
     for t in trends:
         claims = _extract_claim_snippets(t.get("items") or [])
@@ -409,6 +484,7 @@ async def run(
     user = {"trends": payload}
 
     try:
+        # Phase 1: Batch Generation
         data = await _request_synthesis_json(
             system,
             user,
@@ -421,6 +497,7 @@ async def run(
         if data is None:
             raise ValueError("synthesis output not parseable")
 
+        # Merge results into trends
         for idx, t in enumerate(trends):
             base = fallback[idx] if idx < len(fallback) else {}
             if idx < len(data):
@@ -431,6 +508,8 @@ async def run(
                 t["title"] = base.get("title")
                 t["summary"] = base.get("summary")
                 t["so_what"] = base.get("so_what")
+                
+        # Phase 2: Refinement (Critique -> Improve)
         if agentic_cfg and agentic_cfg.enabled:
             refined_trends = []
             for t in trends:

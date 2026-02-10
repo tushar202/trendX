@@ -1,10 +1,8 @@
 from __future__ import annotations
 
-from __future__ import annotations
-
 import json
 import re
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 try:
     import tomllib  # py3.11+
@@ -12,6 +10,13 @@ except Exception:  # pragma: no cover
     tomllib = None  # type: ignore
 
 
+# -----------------------------------------------------------------------------
+# Primitive Fact Extraction (v1)
+# LIMITATION: This relies on exact keyword matching. It often misses nuanced findings
+# or facts phrased differently (e.g., "The model demonstrates superior capabilities...").
+# IMPACT: Enriched items may lack key technical details if they don't use these specific phrases.
+# ROADMAP: Replace with LLM-based extraction (e.g., "Extract key technical facts: {text}").
+# -----------------------------------------------------------------------------
 _SENTENCE_SPLIT = re.compile(r"(?<=[.!?])\s+")
 _FACT_KEYWORDS = [
     "we propose",
@@ -37,6 +42,14 @@ def _text(item: Dict[str, Any]) -> str:
 
 
 def _extract_facts(text: str, limit: int = 5) -> List[str]:
+    """
+    Extract sentences containing specific research keywords.
+    
+    Current Logic:
+    - Split text into sentences.
+    - Check if sentence contains any _FACT_KEYWORDS.
+    - Return up to `limit` sentences.
+    """
     facts: List[str] = []
     if not text:
         return facts
@@ -53,6 +66,19 @@ def _extract_facts(text: str, limit: int = 5) -> List[str]:
 
 
 def _extract_metrics(text: str, limit: int = 8) -> List[str]:
+    """
+    Extract numeric metrics using regex patterns.
+    
+    Current Patterns:
+    - Percentage improvements (e.g., "15% accuracy boost")
+    - Latency (e.g., "50ms")
+    - Parameter counts (e.g., "7b parameters")
+    - Throughput (e.g., "100 tokens/s")
+    
+    Limitation:
+    - Prone to false positives (e.g., "Version 2.0").
+    - Doesn't capture the context of the metric (what was improved?).
+    """
     if not text:
         return []
     metrics: List[str] = []
@@ -139,6 +165,14 @@ def _parse_manifest(item: Dict[str, Any]) -> List[str]:
 
 
 def run(items: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """
+    Enrich items with facts, metrics, and dependencies extracted from text.
+    
+    Flow:
+    1. Extract 'facts' using keyword spotting.
+    2. Extract 'metrics' using regex.
+    3. Parse manifest files (if present) to find dependencies.
+    """
     for item in items:
         text = _text(item)
         item["facts"] = _extract_facts(text)

@@ -22,6 +22,17 @@ def _load_json(path: Path) -> List[Dict[str, Any]] | None:
 
 
 async def run_agent(config_path: str, week: str | None = None) -> None:
+    """
+    The Orchestrator Agent Loop.
+    
+    This function manages the high-level state of the pipeline:
+    1. Steps through stages: Ingest -> Cluster -> Synthesis -> Audit -> Publish.
+    2. In 'Audit' mode, it calls the Controller (LLM or Policy) to review drafts.
+    3. If the Controller rejects a draft, it calls `wrappers.revise_trend_draft`.
+    
+    This loop is fully automated (unless configured to wait for human signal), acting
+    as the 'Manager' that oversees the other agents.
+    """
     config = load_config(config_path)
     week = week or week_id()
     run_dir = get_new_run_dir(week)

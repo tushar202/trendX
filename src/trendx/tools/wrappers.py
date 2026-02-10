@@ -64,6 +64,16 @@ async def revise_trend_draft(
     cluster_items: List[Dict[str, Any]],
     feedback: str,
 ) -> Dict[str, Any]:
+    """
+    Entry point for the **Orchestrator Agent** to refine a draft.
+    
+    Role:
+    1. Called by `src/trendx/orchestrator.py` when a draft is rejected or flagged.
+    2. Receives feedback from the Orchestrator (based on policy or automated checks).
+    3. Triggers the Agentic Synthesis Loop (`refine_single_trend`) to fix the issue.
+    
+    This enables the system to self-correct based on higher-level state management.
+    """
     return await refine_single_trend(
         trend=trend,
         cluster_items=cluster_items,
