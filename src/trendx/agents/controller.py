@@ -29,6 +29,7 @@ RULES:
    - REJECT if: uses "I/We/Our", vague claims ("significant improvement" without numbers), or sounds like a paper author.
    - APPROVE if: neutral tone, specific tool names, actionable "So What".
    - You can reject MULTIPLE trends in one turn.
+   - CHECK feedback_history: If you previously rejected a draft, verify the specific issue was actually fixed before approving. Do NOT approve a draft that still has the same problem.
 5. If all approved, publish.
 
 RETURN JSON (Strict):
@@ -93,6 +94,7 @@ async def get_next_action(state, config: AppConfig) -> Dict[str, Any]:
             "summary": d.summary,
             "so_what": d.so_what,
             "status": d.status,
+            "feedback_history": d.feedback_history,
         }
         for d in state.drafts
     ]
