@@ -3,6 +3,7 @@ llm:
   model: "phi4"
   base_url: "http://localhost:11434"
   api_key_env: null
+  drop_unsupported_params: true
   debug: true
   debug_path: "reports/2026-06/ollama_debug.jsonl"
 

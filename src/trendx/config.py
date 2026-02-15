@@ -12,6 +12,7 @@ class LLMConfig(BaseModel):
     model: str = "gpt-4o-mini"
     api_key_env: Optional[str] = None
     base_url: Optional[str] = None
+    drop_unsupported_params: bool = True
     debug: bool = False
     debug_path: Optional[str] = None
 
@@ -94,4 +95,9 @@ def load_config(path: str | Path) -> AppConfig:
     if not path.exists():
         raise FileNotFoundError(f"Config not found: {path}")
     data = yaml.safe_load(path.read_text()) or {}
+    llm = data.get("llm")
+    if isinstance(llm, dict):
+        # Backward compatibility for configs using dotted key syntax.
+        if "litellm.drop_params" in llm and "drop_unsupported_params" not in llm:
+            llm["drop_unsupported_params"] = bool(llm.get("litellm.drop_params"))
     return AppConfig.model_validate(data)
