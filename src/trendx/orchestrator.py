@@ -9,6 +9,7 @@ from trendx.agents import controller
 from trendx.config import load_config
 from trendx.state import ReportState, TrendDraft
 from trendx.tools import wrappers
+from trendx.utils.litellm_runtime import configure_litellm
 from trendx.utils.paths import get_new_run_dir
 from trendx.utils.time import week_id
 
@@ -41,6 +42,7 @@ async def run_agent(config_path: str, week: str | None = None) -> None:
     as the 'Manager' that oversees the other agents.
     """
     config = load_config(config_path)
+    configure_litellm(config.llm)
     week = week or week_id()
     run_dir = get_new_run_dir(week)
     run_dir.mkdir(parents=True, exist_ok=True)

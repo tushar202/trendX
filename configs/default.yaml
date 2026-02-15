@@ -2,6 +2,7 @@ llm:
   provider: "openai"
   model: "gpt-4o-mini"
   api_key_env: "OPENAI_API_KEY"
+  drop_unsupported_params: true
 
 embeddings:
   model: "all-MiniLM-L6-v2"

@@ -3,6 +3,7 @@ llm:
   model: "llama3.1"
   base_url: "http://localhost:11434"
   api_key_env: null
+  drop_unsupported_params: true
 
 embeddings:
   model: "all-MiniLM-L6-v2"

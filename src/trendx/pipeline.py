@@ -34,6 +34,7 @@ from trendx.storage.persist import (
     save_validation_logs,
 )
 from trendx.utils.logging import get_logger
+from trendx.utils.litellm_runtime import configure_litellm
 from trendx.utils.llm_debug import enable_debug, log_run_metadata
 from trendx.utils.time import week_id
 from trendx.validate.validator import validate_payload
@@ -164,6 +165,7 @@ def _week_ids_for_backfill(weeks: int) -> List[str]:
 
 async def run_pipeline(config_path: str, week: str | None = None) -> None:
     config = load_config(config_path)
+    configure_litellm(config.llm)
     engine = get_engine(config.storage.url)
     await init_db(engine)
 
