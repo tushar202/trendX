@@ -287,7 +287,7 @@ async def _refine_single_trend(
                     rewrite = decision.get("rewrite_content")
                     if isinstance(rewrite, dict):
                         current = _normalize_rewrite(rewrite, current)
-                    return current
+                    continue  # loop back to Critic for re-scoring
 
                 # Perform Local Vector Search
                 evidence = search_cluster_evidence(
@@ -315,14 +315,14 @@ async def _refine_single_trend(
                 final_content = extract_json(final_raw)
                 if isinstance(final_content, dict):
                     current = _normalize_rewrite(final_content, current)
-                return current
+                continue  # loop back to Critic for re-scoring
 
             # Action B: REWRITE (Direct)
             if action == "rewrite":
                 rewrite = decision.get("rewrite_content")
                 if isinstance(rewrite, dict):
                     current = _normalize_rewrite(rewrite, current)
-                return current
+                continue  # loop back to Critic for re-scoring
                 
         except Exception as exc:
             logger.warning("synthesis refine failed: %s", exc)
