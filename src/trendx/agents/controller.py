@@ -43,6 +43,12 @@ RETURN JSON (Strict):
 
 
 def auto_audit(text: str) -> str:
+    """Lightweight heuristic backup for tone/specificity checks.
+
+    Primary enforcement of these rules now lives in the Synthesis Critic
+    prompt (CRITIC_PROMPT rules 4 & 5 in prompts.py). This function serves
+    as a safety-net in case the LLM Critic misses an obvious violation.
+    """
     errors = []
     lower = text.lower()
     if any(x in lower for x in ["our analysis", "we propose", "in this paper", "my opinion"]):

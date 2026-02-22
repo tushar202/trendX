@@ -11,6 +11,8 @@ Analyze for:
 1. Vagueness (e.g., "improves performance" vs "reduces latency by 50ms").
 2. Actionability (Does "So What" tell the engineer exactly what to do?).
 3. Logic (Does the evidence support the claim?).
+4. Tone: REJECT if text uses first-person language (we/our/I/my, e.g., "our analysis", "we propose", "in this paper"). Must be neutral third-person.
+5. Specificity: REJECT if claiming improvement (e.g., "significant improvement") without concrete numbers, percentages, or benchmarks.
 
 Return JSON strictly (no markdown, no code fences):
 {{
