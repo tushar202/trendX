@@ -15,6 +15,7 @@ class LLMConfig(BaseModel):
     drop_unsupported_params: bool = True
     debug: bool = False
     debug_path: Optional[str] = None
+    tavily_api_key: Optional[str] = None
 
 
 class EmbeddingConfig(BaseModel):

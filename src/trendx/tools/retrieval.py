@@ -52,3 +52,51 @@ def search_cluster_evidence(
         total_len += len(entry)
 
     return "\n".join(output_lines) if output_lines else "No highly relevant evidence found."
+
+
+async def tavily_search(
+    query: str,
+    api_key: str | None = None,
+    max_results: int = 3,
+) -> str:
+    """Perform an external web search using Tavily."""
+    if not api_key:
+        return "External search unavailable: No TAVILY_API_KEY provided."
+
+    try:
+        # Try using the official client first
+        try:
+            from tavily import TavilyClient
+            client = TavilyClient(api_key=api_key)
+            resp = client.search(query, max_results=max_results)
+            results = resp.get("results", [])
+        except ImportError:
+            # Fallback to direct HTTP request if library is missing
+            import aiohttp
+            async with aiohttp.ClientSession() as session:
+                payload = {
+                    "api_key": api_key,
+                    "query": query,
+                    "max_results": max_results,
+                    "search_depth": "basic",
+                }
+                async with session.post("https://api.tavily.com/search", json=payload) as r:
+                    if r.status != 200:
+                        return f"Search failed with status {r.status}."
+                    data = await r.json()
+                    results = data.get("results", [])
+
+        if not results:
+            return "No external results found."
+
+        output = []
+        for res in results:
+            title = res.get("title", "Untitled")
+            url = res.get("url", "#")
+            content = res.get("content", "")[:300].replace("\n", " ").strip()
+            output.append(f"- [WEB] {title} ({url}): \"{content}...\"")
+
+        return "\n".join(output)
+
+    except Exception as e:
+        return f"External search error: {str(e)}"
